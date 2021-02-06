@@ -1,5 +1,6 @@
 /***************************************************
   This is an example sketch for the Adafruit 1.8" TFT shield with joystick
+  This example is for the Seesaw version
   ----> http://www.adafruit.com/products/802
 
   Check out the links above for our tutorials and wiring diagrams
@@ -14,103 +15,153 @@
   MIT license, all text above must be included in any redistribution
  ****************************************************/
 
+#include <SPI.h>
+#include <SD.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
-#include <SD.h>
-#include <SPI.h>
+// Be sure to install Adafruit seesaw library!
+#include <Adafruit_seesaw.h>
+#include <Adafruit_TFTShield18.h>
 
-#if defined(__SAM3X8E__)
-    #undef __FlashStringHelper::F(string_literal)
-    #define F(string_literal) string_literal
-#endif
+Adafruit_TFTShield18 ss;
+
 
 // TFT display and SD card will share the hardware SPI interface.
 // Hardware SPI pins are specific to the Arduino board type and
 // cannot be remapped to alternate pins.  For Arduino Uno,
 // Duemilanove, etc., pin 11 = MOSI, pin 12 = MISO, pin 13 = SCK.
-#define SD_CS    4  // Chip select line for SD card
-#define TFT_CS  10  // Chip select line for TFT display
-#define TFT_DC   8  // Data/command line for TFT
-#define TFT_RST  -1  // Reset line for TFT (or connect to +5V)
+#define SD_CS    4  // Chip select line for SD card on Shield
+#define TFT_CS  10  // Chip select line for TFT display on Shield
+#define TFT_DC   8  // Data/command line for TFT on Shield
+#define TFT_RST  -1  // Reset line for TFT is handled by seesaw!
 
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 
-#define BUTTON_NONE 0
-#define BUTTON_DOWN 1
-#define BUTTON_RIGHT 2
-#define BUTTON_SELECT 3
-#define BUTTON_UP 4
-#define BUTTON_LEFT 5
-
 void setup(void) {
   Serial.begin(9600);
+  while (!Serial);
+  
+  // start by disabling both SD and TFT
+  pinMode(TFT_CS, OUTPUT);
+  digitalWrite(TFT_CS, HIGH);
+  pinMode(SD_CS, OUTPUT);
+  digitalWrite(SD_CS, HIGH);
+
+  // Start seesaw helper chip
+  if (!ss.begin()){
+    Serial.println("seesaw could not be initialized!");
+    while(1);
+  }
+  Serial.println("seesaw started");
+  Serial.print("Version: "); Serial.println(ss.getVersion(), HEX);
+
+  // Start set the backlight off
+  ss.setBacklight(TFTSHIELD_BACKLIGHT_OFF);
+  // Reset the TFT
+  ss.tftReset();
 
   // Initialize 1.8" TFT
   tft.initR(INITR_BLACKTAB);   // initialize a ST7735S chip, black tab
 
-  Serial.println("OK!");
-  tft.fillScreen(ST7735_BLACK);
+  Serial.println("TFT OK!");
+  tft.fillScreen(ST77XX_CYAN);
+
+  Serial.print("Initializing SD card...");
+  if (!SD.begin(SD_CS)) {
+    Serial.println("failed!");
+  } else {
+    Serial.println("OK!");
+    File root = SD.open("/");
+    printDirectory(root, 0);
+    root.close();
+    bmpDraw("/parrot.bmp", 0, 0);
+  }
+
+  // Set backlight on fully
+  // ss.setBacklight(TFTSHIELD_BACKLIGHT_ON);
+  // Or you can set the backlight one third on
+  // ss.setBacklight(TFTSHIELD_BACKLIGHT_ON / 3);
+  // Or dim it up
+  for (int32_t i=TFTSHIELD_BACKLIGHT_OFF; i<TFTSHIELD_BACKLIGHT_ON; i+=100) {
+    ss.setBacklight(i);
+    delay(1);
+  }
+  delay(100);
+  tft.fillScreen(ST77XX_RED);
+  delay(100);
+  tft.fillScreen(ST77XX_GREEN);
+  delay(100);
+  tft.fillScreen(ST77XX_BLUE);
+  delay(100);
+  tft.fillScreen(ST77XX_BLACK);
+ 
+  tft.setTextSize(1);
+  tft.setTextColor(ST77XX_WHITE);
+  tft.setCursor(0, 0);
+  tft.print("Press all the buttons");
 }
 
-
-uint8_t readButton(void) {
-  float a = analogRead(3);
-  
-  a *= 5.0;
-  a /= 1024.0;
-  
-  Serial.print("Button read analog = ");
-  Serial.println(a);
-  if (a < 0.2) return BUTTON_DOWN;
-  if (a < 1.0) return BUTTON_RIGHT;
-  if (a < 1.5) return BUTTON_SELECT;
-  if (a < 2.0) return BUTTON_UP;
-  if (a < 3.2) return BUTTON_LEFT;
-  else return BUTTON_NONE;
-}
 
 uint8_t buttonhistory = 0;
 
 void loop() {
-  uint8_t b = readButton();
+  uint32_t buttons = ss.readButtons();
   tft.setTextSize(3);
-  if (b == BUTTON_DOWN) {
-    tft.setTextColor(ST7735_RED);
+  if(! (buttons & TFTSHIELD_BUTTON_DOWN)){
+    tft.setTextColor(ST77XX_RED);
     tft.setCursor(0, 10);
     tft.print("Down ");
     buttonhistory |= 1;
   }
-  if (b == BUTTON_LEFT) {
-    tft.setTextColor(ST7735_YELLOW);
+  if(! (buttons & TFTSHIELD_BUTTON_LEFT)){
+    tft.setTextColor(ST77XX_YELLOW);
     tft.setCursor(0, 35);
      tft.print("Left ");
     buttonhistory |= 2;
   }
-  if (b == BUTTON_UP) {
-    tft.setTextColor(ST7735_GREEN);
+  if(! (buttons & TFTSHIELD_BUTTON_UP)){
+    tft.setTextColor(ST77XX_GREEN);
     tft.setCursor(0, 60);
     tft.print("Up"); 
     buttonhistory |= 4;
   }
-  if (b == BUTTON_RIGHT) {
-    tft.setTextColor(ST7735_BLUE);
+  if(! (buttons & TFTSHIELD_BUTTON_RIGHT)){
+    tft.setTextColor(ST77XX_BLUE);
     tft.setCursor(0, 85);
     tft.print("Right");
     buttonhistory |= 8;
   }
-  if ((b == BUTTON_SELECT) && (buttonhistory == 0xF)) {
-    tft.setTextColor(ST7735_MAGENTA);
+  if(! (buttons & TFTSHIELD_BUTTON_1)){
+    tft.setTextColor(ST77XX_BLUE);
+    tft.setCursor(0, 140);
+    tft.print("1");
+    buttonhistory |= 16;
+  }
+  if(! (buttons & TFTSHIELD_BUTTON_2)){
+    tft.setTextColor(ST77XX_GREEN);
+    tft.setCursor(50, 140);
+    tft.print("2");
+    buttonhistory |= 32;
+  }
+  if(! (buttons & TFTSHIELD_BUTTON_3)){
+    tft.setTextColor(ST77XX_YELLOW);
+    tft.setCursor(100, 140);
+    tft.print("3");
+    buttonhistory |= 64;
+  }
+  if (! (buttons & TFTSHIELD_BUTTON_IN)) {
+    tft.setTextColor(ST77XX_MAGENTA);
     tft.setCursor(0, 110);
     tft.print("SELECT");
-    buttonhistory |= 8;
-    delay(2000);
-    Serial.print("Initializing SD card...");
-    if (!SD.begin(SD_CS)) {
-      Serial.println("failed!");
-      return;
+  }
+  if (buttonhistory == 0x7F) {
+    bmpDraw("/parrot.bmp", 0, 0);
+    while (1) {
+      tft.invertDisplay(true);
+      delay(500);
+      tft.invertDisplay(false);
+      delay(500);
     }
-    bmpDraw("parrot.bmp", 0, 0);
-    while (1);
   }
   delay(100);
 }
@@ -125,7 +176,7 @@ void loop() {
 
 #define BUFFPIXEL 20
 
-void bmpDraw(char *filename, uint8_t x, uint8_t y) {
+void bmpDraw(char *filename, uint8_t x, uint16_t y) {
 
   File     bmpFile;
   int      bmpWidth, bmpHeight;   // W+H in pixels
@@ -143,33 +194,33 @@ void bmpDraw(char *filename, uint8_t x, uint8_t y) {
   if((x >= tft.width()) || (y >= tft.height())) return;
 
   Serial.println();
-  Serial.print("Loading image '");
+  Serial.print(F("Loading image '"));
   Serial.print(filename);
   Serial.println('\'');
 
   // Open requested file on SD card
   if ((bmpFile = SD.open(filename)) == NULL) {
-    Serial.print("File not found");
+    Serial.print(F("File not found"));
     return;
   }
 
   // Parse BMP header
   if(read16(bmpFile) == 0x4D42) { // BMP signature
-    Serial.print("File size: "); Serial.println(read32(bmpFile));
+    Serial.print(F("File size: ")); Serial.println(read32(bmpFile));
     (void)read32(bmpFile); // Read & ignore creator bytes
     bmpImageoffset = read32(bmpFile); // Start of image data
-    Serial.print("Image Offset: "); Serial.println(bmpImageoffset, DEC);
+    Serial.print(F("Image Offset: ")); Serial.println(bmpImageoffset, DEC);
     // Read DIB header
-    Serial.print("Header size: "); Serial.println(read32(bmpFile));
+    Serial.print(F("Header size: ")); Serial.println(read32(bmpFile));
     bmpWidth  = read32(bmpFile);
     bmpHeight = read32(bmpFile);
     if(read16(bmpFile) == 1) { // # planes -- must be '1'
       bmpDepth = read16(bmpFile); // bits per pixel
-      Serial.print("Bit Depth: "); Serial.println(bmpDepth);
+      Serial.print(F("Bit Depth: ")); Serial.println(bmpDepth);
       if((bmpDepth == 24) && (read32(bmpFile) == 0)) { // 0 = uncompressed
 
         goodBmp = true; // Supported BMP format -- proceed!
-        Serial.print("Image size: ");
+        Serial.print(F("Image size: "));
         Serial.print(bmpWidth);
         Serial.print('x');
         Serial.println(bmpHeight);
@@ -228,7 +279,7 @@ void bmpDraw(char *filename, uint8_t x, uint8_t y) {
           } // end pixel
         } // end scanline
         tft.endWrite();
-        Serial.print("Loaded in ");
+        Serial.print(F("Loaded in "));
         Serial.print(millis() - startTime);
         Serial.println(" ms");
       } // end goodBmp
@@ -236,8 +287,9 @@ void bmpDraw(char *filename, uint8_t x, uint8_t y) {
   }
 
   bmpFile.close();
-  if(!goodBmp) Serial.println("BMP format not recognized.");
+  if(!goodBmp) Serial.println(F("BMP format not recognized."));
 }
+
 
 // These read 16- and 32-bit types from the SD card file.
 // BMP data is stored little-endian, Arduino is little-endian too.
@@ -258,3 +310,29 @@ uint32_t read32(File f) {
   ((uint8_t *)&result)[3] = f.read(); // MSB
   return result;
 }
+
+
+void printDirectory(File dir, int numTabs) {
+  while (true) {
+
+    File entry =  dir.openNextFile();
+    if (! entry) {
+      // no more files
+      break;
+    }
+    for (uint8_t i = 0; i < numTabs; i++) {
+      Serial.print('\t');
+    }
+    Serial.print(entry.name());
+    if (entry.isDirectory()) {
+      Serial.println("/");
+      printDirectory(entry, numTabs + 1);
+    } else {
+      // files have sizes, directories do not
+      Serial.print("\t\t");
+      Serial.println(entry.size(), DEC);
+    }
+    entry.close();
+  }
+}
+
